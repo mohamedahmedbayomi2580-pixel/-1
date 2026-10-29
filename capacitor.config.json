@@ -1,9 +1,0 @@
-{
-  "appId": "com.cafe.pos",
-  "appName": "كاشير الكافيه",
-  "webDir": "www",
-  "android": {
-    "allowMixedContent": true,
-    "adjustMarginsForEdgeToEdge": "force"
-  }
-}
