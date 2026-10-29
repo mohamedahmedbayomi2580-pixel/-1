@@ -1,4 +1,4 @@
-let db=Store.load();
+let db=Store.defaults();
 let view='home';
 let ctx={cat:null,cart:[],edit:false,period:'day',tableId:null,code:'',authed:false,pinv:''};
 const A={};
@@ -11,8 +11,22 @@ const isSeller=()=>db.settings.role==='seller';
 const save=()=>Store.save(db);
 const tm=d=>new Date(d).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});
 function toast(m){const t=$('#toast');t.textContent=m;t.className='show';clearTimeout(toast.t);toast.t=setTimeout(()=>t.className='',2300)}
-function applyTheme(){const t=db.settings.theme,r=document.documentElement.style;
-  r.setProperty('--bg',t.bg);r.setProperty('--card',t.card);r.setProperty('--accent',t.accent);r.setProperty('--text',t.text);r.setProperty('--bd',t.border);}
+const PRESETS=[
+ {n:'أبيض',c:['#ffffff','#2f7df6','#2b2f38'],t:{}},
+ {n:'دافئ',c:['#fbf6f0','#c2703d','#3b2a20'],t:{bg:'#fbf6f0',card:'#fbf6f0',accent:'#c2703d',text:'#3b2a20',muted:'#8c7767',border:'#e7d9ca',shadowDark:'#7a5a3a'}},
+ {n:'أخضر',c:['#f3faf5','#16a34a','#1f2d25'],t:{bg:'#f3faf5',card:'#f3faf5',accent:'#16a34a',text:'#1f2d25',muted:'#6b8576',border:'#d5e8dc',shadowDark:'#2f6b49'}},
+ {n:'بنفسجي',c:['#f7f5fd','#7c5cff','#2a2540'],t:{bg:'#f7f5fd',card:'#f7f5fd',accent:'#7c5cff',text:'#2a2540',muted:'#837ea0',border:'#e1dcf3',shadowDark:'#4b3f8a'}},
+ {n:'ليلي',c:['#1f232b','#4d9cff','#e8ebf0'],t:{bg:'#1f232b',card:'#1f232b',accent:'#4d9cff',accentText:'#ffffff',text:'#e8ebf0',muted:'#9aa3b2',border:'#2d333d',shadowDark:'#000000',shadowLight:'#2b313c',depth:45}}
+];
+const COLORS=[['عام',[['bg','الخلفية'],['card','المستطيلات'],['border','الحواف']]],['النصوص',[['text','النص الأساسي'],['muted','النص الثانوي']]],['الأزرار والتحديد',[['accent','لون الأزرار'],['accentText','نص الأزرار']]],['الحالات',[['good','الربح / النجاح'],['bad','المصروف / الحذف']]],['الظلال',[['shadowDark','الظل الغامق'],['shadowLight','الظل الفاتح']]]];
+function hex2rgba(h,a){h=String(h).replace('#','');if(h.length===3)h=h.split('').map(c=>c+c).join('');const n=parseInt(h,16)||0;return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`}
+function applyTheme(){
+  const t={...Store.THEME,...db.settings.theme},set=(k,v)=>document.documentElement.style.setProperty(k,v);
+  set('--bg',t.bg);set('--card',t.card);set('--accent',t.accent);set('--accentText',t.accentText);set('--text',t.text);set('--muted',t.muted);set('--bd',t.border);
+  set('--good',t.good);set('--bad',t.bad);set('--sd',hex2rgba(t.shadowDark,t.depth/100));set('--sl',t.shadowLight);set('--r',t.radius+'px');
+  set('--acs',hex2rgba(t.accent,.13));set('--acg',hex2rgba(t.accent,.38));
+  const m=document.querySelector('meta[name=theme-color]');if(m)m.content=t.bg;
+}
 function closeM(){$('#modal').innerHTML=''}
 function sheet(html){$('#modal').innerHTML=`<div class="ov" data-a="ovClose"><div class="sheet card">${html}</div></div>`}
 function form(title,fields,ok){
@@ -56,44 +70,49 @@ function makeInvoice(items,src,table){
 /* ============ العرض ============ */
 function render(){
   const y=window.scrollY;applyTheme();
-  const titles={home:db.settings.name,quick:'البيع السريع',tables:'ترابيزات',table:'الطلب',products:'المنتجات',expenses:'المصروفات',treasury:'الخزنة',reports:'التقارير',invoices:'سجل الفواتير',sync:isSeller()?'الاتصال بالمالك':'تبديل البائع',settings:'الإعدادات'};
+  const titles={quick:'البيع السريع',tables:'ترابيزات',table:'الطلب',products:'المنتجات',expenses:'المصروفات',treasury:'الخزنة',reports:'التقارير',invoices:'سجل الفواتير',sync:isSeller()?'الاتصال بالمالك':'تبديل البائع',settings:'الإعدادات'};
   const fn={home:vHome,quick:orderUI,tables:vTables,table:vTable,products:vProducts,expenses:vExpenses,treasury:vTreasury,reports:vReports,invoices:vInvoices,sync:vSync,settings:vSettings}[view];
-  const body=fn();
-  $('#app').innerHTML=`<div class="top">${view!=='home'?`<div class="icon card" data-a="go" data-v="${view==='table'?'tables':'home'}">→</div>`:''}<h2>${esc(titles[view])}</h2>${view==='home'&&isSeller()?`<span class="badge">بائع: ${esc(db.settings.sellerName)}</span>`:''}</div>`+body;
-  window.scrollTo(0,y);
+  const body=fn(),ent=view!==render.last;render.last=view;
+  const top=view==='home'?'':`<div class="top"><div class="icon card" data-a="go" data-v="${view==='table'?'tables':'home'}">→</div><h2>${esc(titles[view])}</h2></div>`;
+  $('#app').innerHTML=top+`<div class="page ${ent?'enter':''}">${body}</div>`;
+  window.scrollTo(0,ent?0:y);
 }
 function vHome(){
   const d=Store.day(new Date()),ti=db.invoices.filter(i=>i.day===d);
   const sales=sum(ti,i=>i.total),exp=sum(db.expenses.filter(e=>e.day===d),e=>e.amount),open=db.tables.filter(t=>t.items.length).length;
-  const st=(l,v,go)=>`<div class="card stat" data-a="go" data-v="${go}"><small>${l}</small><b>${v}</b></div>`;
-  const s3=isSeller()?st('مبيعات اليوم',fmt(sales),'invoices')+st('فواتير اليوم',ti.length,'invoices')+st('طلبات مفتوحة',open,'tables')
-    :st('مبيعات اليوم',fmt(sales),'reports')+st('المصروفات',fmt(exp),'expenses')+st('طلبات مفتوحة',open,'tables');
+  const st=(ic,l,v,go,c)=>`<div class="card stat" data-a="go" data-v="${go}"><div class="well">${ic}</div><b style="color:${c}">${v}</b><small>${l}</small></div>`;
+  const s3=isSeller()?st('💰','مبيعات اليوم',fmt(sales),'invoices','var(--accent)')+st('🧾','فواتير اليوم',ti.length,'invoices','var(--text)')+st('🍽️','طلبات مفتوحة',open,'tables','var(--text)')
+    :st('💰','مبيعات اليوم',fmt(sales),'reports','var(--good)')+st('💸','المصروفات',fmt(exp),'expenses','var(--bad)')+st('🍽️','طلبات مفتوحة',open,'tables','var(--accent)');
   const tl=isSeller()?[['invoices','🧾','سجل الفواتير'],['sync','🔗','الاتصال بالمالك'],['settings','⚙️','الإعدادات']]
     :[['products','📦','المنتجات'],['expenses','💸','المصروفات'],['treasury','🏦','الخزنة'],['reports','📊','التقارير'],['invoices','🧾','سجل الفواتير'],['sync','🔄','تبديل البائع'],['settings','⚙️','الإعدادات']];
-  return `<div class="stats">${s3}</div>
-  <div class="card wide" data-a="go" data-v="quick"><span>⚡</span>البيع السريع</div>
-  <div class="card wide" data-a="go" data-v="tables"><span>🍽️</span>ترابيزات</div>
-  <div class="grid">${tl.map(t=>`<div class="card tile" data-a="go" data-v="${t[0]}"><span>${t[1]}</span>${t[2]}</div>`).join('')}</div>`;
+  const h=new Date().getHours(),greet=h<12?'صباح الخير ☀️':h<18?'مساء الخير 👋':'مساء النور 🌙';
+  const wide=(v,ic,t,sub)=>`<div class="card wide" data-a="go" data-v="${v}"><div class="well">${ic}</div><div class="t"><b>${t}</b><small>${sub}</small></div><i>‹</i></div>`;
+  return `<div class="hero"><div><small>${greet}</small><h1>${esc(db.settings.name)}</h1>${isSeller()?`<span class="badge">بائع: ${esc(db.settings.sellerName)}</span>`:''}</div><div class="date">${new Date().toLocaleDateString('ar-EG',{weekday:'long',day:'numeric',month:'long'})}</div></div>
+  <div class="stats">${s3}</div>
+  ${wide('quick','⚡','البيع السريع','فاتورة جديدة بضغطة واحدة')}
+  ${wide('tables','🍽️','ترابيزات',open?open+' طلب مفتوح الآن':'لا توجد طلبات مفتوحة')}
+  <div class="grid">${tl.map(t=>`<div class="card tile" data-a="go" data-v="${t[0]}"><div class="well">${t[1]}</div>${t[2]}</div>`).join('')}</div>`;
 }
 
 /* --- واجهة الطلب المشتركة (بيع سريع + ترابيزة) --- */
 function orderUI(){
   if(!db.categories.find(c=>c.id===ctx.cat))ctx.cat=db.categories[0]?db.categories[0].id:null;
-  const cart=cartRef(),own=!isSeller(),e=ctx.edit&&own;
+  const cart=cartRef(),own=!isSeller(),e=ctx.edit&&own,count=sum(cart,i=>i.qty),tot=cartTotal(cart);
   const chips=db.categories.map(c=>`<span class="chip ${c.id===ctx.cat?'on':''}" data-a="cat" data-id="${c.id}">${esc(c.name)}${e?`<b data-a="delCat" data-id="${c.id}">✕</b>`:''}</span>`).join('');
-  const prods=db.products.filter(p=>p.cat===ctx.cat).map(p=>`<div class="card prod" data-a="add" data-id="${p.id}">${esc(p.name)}<small>${fmt(p.price)}</small>${e?`<b data-a="delProd" data-id="${p.id}">✕</b>`:''}</div>`).join('');
+  const prods=db.products.filter(p=>p.cat===ctx.cat).map(p=>{const q=(cart.find(i=>i.pid===p.id)||{}).qty;
+    return `<div class="card prod" data-a="add" data-id="${p.id}">${q?`<span class="cnt">${q}</span>`:''}<span class="pn">${esc(p.name)}</span><small>${fmt(p.price)} ج</small>${e?`<b data-a="delProd" data-id="${p.id}">✕</b>`:''}</div>`}).join('');
   const rows=cart.map((i,n)=>`<div class="line"><div>${esc(i.name)}<br><small>${fmt(i.price)} × ${i.qty}</small></div>
     <div class="qty"><button class="btn" data-a="dec" data-n="${n}">−</button><b>${i.qty}</b><button class="btn" data-a="inc" data-n="${n}">+</button></div><b>${fmt(i.price*i.qty)}</b></div>`).join('');
-  return `<div class="row" style="margin-bottom:6px">${own?`<button class="btn" data-a="addCat">＋ قسم</button><button class="btn" data-a="addProd">＋ صنف</button><button class="btn ${e?'pri':''}" data-a="toggleEdit">${e?'تم':'تعديل / حذف'}</button>`:''}</div>
+  return `<div class="dk"><div class="row" style="margin-bottom:6px">${own?`<button class="btn" data-a="addCat">＋ قسم</button><button class="btn" data-a="addProd">＋ صنف</button><button class="btn ${e?'pri':''}" data-a="toggleEdit">${e?'تم':'تعديل / حذف'}</button>`:''}</div>
   <div class="chips">${chips||'<div class="empty">أضف قسماً للبدء</div>'}</div>
   <div class="prods">${prods||'<div class="empty" style="grid-column:1/-1">لا أصناف في هذا القسم</div>'}</div>
   <div class="card pad"><h3>${ctx.tableId?'طلب الترابيزة':'إنشاء الفاتورة'}</h3>${rows||'<div class="empty">اضغط على الأصناف لإضافتها</div>'}
-  <div class="total">الإجمالي: ${fmt(cartTotal(cart))}</div>
-  <div class="row"><button class="btn pri" data-a="pay">${ctx.tableId?'إصدار الفاتورة وإغلاق الحساب':'حفظ الفاتورة'}</button><button class="btn red" data-a="clearCart">مسح</button></div></div>`;
+  <div class="total">الإجمالي: ${fmt(tot)} ج</div><button class="btn red" data-a="clearCart" style="width:100%">مسح الطلب</button></div></div>
+  ${count?`<div class="card dock"><div><small>${count} صنف</small><b>${fmt(tot)} ج</b></div><button class="btn pri" data-a="pay">${ctx.tableId?'إصدار الفاتورة':'حفظ الفاتورة'}</button></div>`:''}`;
 }
 function vTables(){
   return `<button class="btn pri" data-a="addTable" style="margin-bottom:14px;width:100%">＋ ترابيزة جديدة</button><div class="grid">`+
-  (db.tables.map(t=>`<div class="card tile" data-a="openTable" data-id="${t.id}"><span>${t.items.length?'🟠':'🟢'}</span>${esc(t.name)}<br><small>${t.items.length?fmt(cartTotal(t.items))+' ج':'فارغة'}</small></div>`).join('')||'<div class="empty" style="grid-column:1/-1">لا توجد ترابيزات</div>')+`</div>`;
+  (db.tables.map(t=>`<div class="card tile" data-a="openTable" data-id="${t.id}"><div class="well">${t.items.length?'🟠':'🟢'}</div>${esc(t.name)}<small>${t.items.length?fmt(cartTotal(t.items))+' ج':'فارغة'}</small></div>`).join('')||'<div class="empty" style="grid-column:1/-1">لا توجد ترابيزات</div>')+`</div>`;
 }
 function vTable(){
   const t=db.tables.find(x=>x.id===ctx.tableId);if(!t){view='tables';return vTables()}
@@ -115,8 +134,8 @@ function vExpenses(){
   <div class="card pad">${list||'<div class="empty">لا مصروفات</div>'}</div>`;
 }
 function vTreasury(){
-  const t=treasury(),mv=[...db.moves].reverse().map(m=>`<div class="line"><div>${m.type==='in'?'إيداع':'سحب'} ${m.note?`<small>— ${esc(m.note)}</small>`:''}<br><small>${m.day}</small></div><b style="color:${m.type==='in'?'#1a9d4a':'#d33'}">${m.type==='in'?'+':'−'}${fmt(m.amount)}</b></div>`).join('');
-  return `<div class="card pad"><div class="total" style="font-size:30px">${fmt(t.bal)} ج</div><div style="text-align:center;opacity:.6;margin-bottom:10px">الرصيد الحالي في الخزنة</div>
+  const t=treasury(),mv=[...db.moves].reverse().map(m=>`<div class="line"><div>${m.type==='in'?'إيداع':'سحب'} ${m.note?`<small>— ${esc(m.note)}</small>`:''}<br><small>${m.day}</small></div><b style="color:${m.type==='in'?'var(--good)':'var(--bad)'}">${m.type==='in'?'+':'−'}${fmt(m.amount)}</b></div>`).join('');
+  return `<div class="card pad"><div class="total" style="font-size:30px">${fmt(t.bal)} ج</div><div style="text-align:center;color:var(--muted);margin-bottom:10px">الرصيد الحالي في الخزنة</div>
   <div class="line"><span>رصيد افتتاحي</span><b>${fmt(t.opening)}</b></div><div class="line"><span>+ المبيعات (كل البائعين)</span><b>${fmt(t.sales)}</b></div>
   <div class="line"><span>+ إيداعات</span><b>${fmt(t.inn)}</b></div><div class="line"><span>− مصروفات مدفوعة</span><b>${fmt(t.exp)}</b></div><div class="line"><span>− مسحوبات</span><b>${fmt(t.out)}</b></div></div>
   <div class="row"><button class="btn" data-a="opening">ضبط المبلغ الموجود</button><button class="btn" data-a="mv" data-t="in">＋ إيداع</button><button class="btn" data-a="mv" data-t="out">− سحب</button></div>
@@ -141,14 +160,25 @@ function vInvoices(){
   return `<div class="card pad">${list.map(i=>`<div class="line" data-a="viewInv" data-id="${i.id}"><div>#${i.no} ${i.table?'· '+esc(i.table):''}<br><small>${i.day} ${tm(i.at)} · ${i.seller==='owner'?'المالك':esc(i.seller)}</small></div><b>${fmt(i.total)}</b></div>`).join('')||'<div class="empty">لا فواتير</div>'}</div>`;
 }
 function vSettings(){
-  const t=db.settings.theme,c=(k,l)=>`<div><label>${l}</label><input type="color" data-c="${k}" value="${t[k]}"></div>`;
+  const t={...Store.THEME,...db.settings.theme};
   if(isSeller())return `<div class="card pad"><h3>وضع البائع</h3><p>الجهاز مرتبط بالبائع: <b>${esc(db.settings.sellerName)}</b></p><button class="btn red" data-a="exitSeller" style="width:100%">الخروج من وضع البائع (يتطلب رمز المالك)</button></div>`;
+  const inf=Store.info(),fmtD=d=>d?new Date(d).toLocaleString('ar-EG'):'لم تُحفظ بعد';
   return `<div class="card pad"><h3>اسم الكافيه</h3><input id="cname" value="${esc(db.settings.name)}"><button class="btn pri" data-a="saveName" style="width:100%">حفظ الاسم</button></div>
-  <div class="card pad"><h3>الألوان</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${c('bg','الخلفية')}${c('card','المستطيلات')}${c('accent','اللون الأساسي')}${c('text','النص')}${c('border','الحواف')}</div>
+  <div class="card pad"><h3>🎨 الألوان والمظهر</h3>
+  <label>أنماط جاهزة</label><div class="presets">${PRESETS.map((p,i)=>`<div class="card preset" data-a="preset" data-i="${i}"><i>${p.c.map(c=>`<s style="background:${c}"></s>`).join('')}</i>${p.n}</div>`).join('')}</div>
+  <div class="cg">${COLORS.map(g=>`<h4>${g[0]}</h4>`+g[1].map(([k,l])=>`<div><label>${l}</label><input type="color" data-c="${k}" value="${t[k]}"></div>`).join('')).join('')}</div>
+  <label style="display:block;margin-top:10px">قوة البروز (الظل)</label><input type="range" data-c="depth" min="0" max="45" value="${t.depth}">
+  <label>استدارة الحواف</label><input type="range" data-c="radius" min="6" max="34" value="${t.radius}">
   <button class="btn" data-a="resetTheme" style="width:100%">استرجاع الألوان الافتراضية</button></div>
-  <div class="card pad"><h3>رمز المالك</h3><p style="font-size:13px;opacity:.7;margin-top:0">يُستخدم لإعادة الضبط والخروج من وضع البائع.</p><button class="btn" data-a="setPin" style="width:100%">تغيير الرمز</button></div>
-  <div class="card pad"><h3>النسخ الاحتياطي</h3><div class="row"><button class="btn pri" data-a="backup">تصدير نسخة احتياطية</button><button class="btn" data-a="restore">استرجاع من ملف</button></div><input type="file" id="rf" accept=".json,application/json" style="display:none"></div>
-  <div class="card pad"><h3>جهاز البائع</h3><p style="font-size:13px;opacity:.7;margin-top:0">حوّل هذا الجهاز (على هاتف العامل) إلى وضع البيع فقط.</p><button class="btn" data-a="makeSeller" style="width:100%">تحويل الجهاز لوضع البائع</button></div>
+  <div class="card pad"><h3>💾 التخزين</h3>
+  <div class="line"><span>قاعدة البيانات</span><b>${esc(inf.mode)}</b></div>
+  <div class="line"><span>مجلد النسخة على الهاتف</span><b dir="ltr">${esc(inf.path)}</b></div>
+  <div class="line"><span>آخر نسخة تلقائية</span><small>${fmtD(inf.last)}</small></div>
+  ${inf.err?`<p style="color:var(--bad);font-size:12px">${esc(inf.err)}</p>`:''}
+  <div class="row"><button class="btn pri" data-a="mirrorNow">حفظ نسخة الآن في المجلد</button><button class="btn" data-a="restoreFolder">استرجاع من المجلد</button></div>
+  <div class="row"><button class="btn" data-a="backup">مشاركة نسخة احتياطية</button><button class="btn" data-a="restore">استرجاع من ملف</button></div><input type="file" id="rf" accept=".json,application/json" style="display:none"></div>
+  <div class="card pad"><h3>رمز المالك</h3><p style="font-size:13px;color:var(--muted);margin-top:0">يُستخدم لإعادة الضبط والخروج من وضع البائع.</p><button class="btn" data-a="setPin" style="width:100%">تغيير الرمز</button></div>
+  <div class="card pad"><h3>جهاز البائع</h3><p style="font-size:13px;color:var(--muted);margin-top:0">حوّل هذا الجهاز (على هاتف العامل) إلى وضع البيع فقط.</p><button class="btn" data-a="makeSeller" style="width:100%">تحويل الجهاز لوضع البائع</button></div>
   <div class="card pad"><h3>ضبط المصنع</h3><button class="btn red" data-a="factory" style="width:100%">مسح كل البيانات</button></div>`;
 }
 
@@ -163,24 +193,51 @@ function vSync(){
   const dev=Sync.isOpen();
   if(isSeller())return `<div class="card pad"><h3>الاتصال بالمالك</h3>
   <label>كود الاتصال (من المالك)</label><input id="pin" inputmode="numeric" value="${esc(ctx.pinv)}">
-  <label>الصق رمز نقطة الاتصال الذي أرسله المالك</label><textarea id="off"></textarea>
+  <div class="st">📡 جهازك ظاهر للمالك تلقائياً على نفس الشبكة. اكتب الكود وانتظر؛ لما المالك يضغط «اتصال» يتم الربط لوحده.</div>
+  <label>أو يدوياً: الصق رمز نقطة الاتصال الذي أرسله المالك</label>
+  <textarea id="off"></textarea>
   <button class="btn pri" data-a="join" style="width:100%">اتصال</button>
   <label>انسخ هذا الرد وأرسله للمالك</label><textarea id="rep" readonly></textarea><button class="btn" data-a="copy" data-t="rep" style="width:100%">نسخ الرد</button>
   <div class="st" id="st">${dev?'متصل ✔':'غير متصل'}</div>
   <div class="row"><button class="btn pri" data-a="sendSales">إرسال المبيعات الآن</button><button class="btn red" data-a="closeConn">إغلاق الاتصال</button></div>
-  <p style="font-size:13px;opacity:.7">فواتير لم تُرسل بعد: <b>${db.invoices.filter(i=>!i.sent).length}</b></p></div>
+  <p style="font-size:13px;color:var(--muted)">فواتير لم تُرسل بعد: <b>${db.invoices.filter(i=>!i.sent).length}</b></p></div>
   <div class="card pad"><h3>بديل بالنص (بدون اتصال)</h3><textarea id="tx"></textarea><div class="row"><button class="btn" data-a="mkTxt">تجهيز مبيعاتي كنص</button><button class="btn" data-a="copy" data-t="tx">نسخ</button><button class="btn" data-a="impTxt">استيراد قائمة المنتجات</button></div></div>`;
-  return `<div class="card pad"><h3>1) فتح نقطة اتصال</h3>
-  <label>كود الاتصال (يكتبه العامل ليسمح له بالدخول)</label><input id="code" inputmode="numeric" value="${esc(ctx.code||String(Math.floor(1000+Math.random()*9000)))}">
-  <button class="btn pri" data-a="host" style="width:100%">إنشاء رمز نقطة الاتصال</button>
-  <textarea id="o1" readonly placeholder="سيظهر الرمز هنا — أرسله للعامل"></textarea><button class="btn" data-a="copy" data-t="o1" style="width:100%">نسخ الرمز</button>
-  <label>2) الصق رد العامل هنا</label><textarea id="a1"></textarea><button class="btn pri" data-a="link" style="width:100%">ربط</button>
+  if(!ctx.code)ctx.code=String(Math.floor(1000+Math.random()*9000));
+  return `<div class="card pad"><h3>📡 نقطة اتصال الموظفين (تلقائي)</h3>
+  <label>كود الاتصال (الموظف يكتب نفس الكود)</label><input id="code" inputmode="numeric" value="${esc(ctx.code)}">
+  <button class="btn pri" id="dtog" data-a="discToggle" style="width:100%">${Disc.active?'إغلاق نقطة الاتصال':'فتح نقطة الاتصال وإظهار الموظفين'}</button>
+  <div id="wk">${wkHTML()}</div>
   <div class="st" id="st">${dev?'متصل ✔':'غير متصل'}</div>
   <div class="row"><button class="btn" data-a="push">إرسال المنتجات للعامل</button><button class="btn pri" data-a="pull">سحب المبيعات</button><button class="btn red" data-a="closeConn">إغلاق نقطة الاتصال</button></div></div>
+  <div class="card pad"><h3>طريقة يدوية (احتياطي)</h3>
+  <button class="btn pri" data-a="host" style="width:100%">1) إنشاء رمز نقطة الاتصال</button>
+  <textarea id="o1" readonly placeholder="سيظهر الرمز هنا — أرسله للعامل"></textarea><button class="btn" data-a="copy" data-t="o1" style="width:100%">نسخ الرمز</button>
+  <label>2) الصق رد العامل هنا</label><textarea id="a1"></textarea><button class="btn pri" data-a="link" style="width:100%">ربط</button></div>
   <div class="card pad"><h3>بديل بالنص (بدون اتصال مباشر)</h3><textarea id="tx" placeholder="الصق هنا مبيعات العامل ثم اضغط استيراد"></textarea><div class="row"><button class="btn" data-a="mkTxt">تجهيز المنتجات كنص</button><button class="btn" data-a="copy" data-t="tx">نسخ</button><button class="btn pri" data-a="impTxt">استيراد مبيعات</button></div></div>
   <div class="card pad"><h3>مبيعات الفرد الثاني والموازنة</h3><div id="sl">${sellersHTML()}</div></div>`;
 }
 const st=m=>{const e=$('#st');if(e)e.textContent=m};
+let discPeers=[];
+function wkHTML(){
+  if(!Disc.active)return '<div class="empty">اضغط الزر لفتح نقطة الاتصال، وسيظهر هنا الموظفون الموجودون على نفس الشبكة</div>';
+  if(!discPeers.length)return '<div class="empty">جاري البحث عن الموظفين...<br><small>الموظف لازم يفتح شاشة «الاتصال بالمالك» ويكون على نفس الهوت سبوت</small></div>';
+  return discPeers.map(p=>`<div class="line"><div>👤 <b>${esc(p.name)}</b>${ctx.peerId===p.id&&ctx.authed?' <span class="tag">متصل ✔</span>':''}<br><small>${esc(p.ip||'')}</small></div><button class="btn pri" data-a="discConnect" data-id="${esc(p.id)}">اتصال</button></div>`).join('');
+}
+function updDisc(){const b=$('#dtog');if(b)b.textContent=Disc.active?'إغلاق نقطة الاتصال':'فتح نقطة الاتصال وإظهار الموظفين';const e=$('#wk');if(e)e.innerHTML=wkHTML()}
+function sellerId(){if(!db.settings.devId){db.settings.devId=uid();save()}return db.settings.devId}
+async function sellerAcceptOffer(ip,code){
+  if(Sync.isOpen()||ctx.offerBusy)return;ctx.offerBusy=true;setTimeout(()=>ctx.offerBusy=false,8000);
+  const go=async()=>{try{wireSync();st('المالك يتصل بك...');const ans=await Sync.join(code);await Disc.sendCode(ip,'answer',sellerId(),'',ans);st('جاري إتمام الاتصال...')}catch(e){st('تعذر الاتصال: '+(e.message||e))}};
+  if(!ctx.pinv)form('كود الاتصال',[{k:'c',l:'اكتب الكود الذي أعطاك إياه المالك'}],v=>{if(!v.c)return false;ctx.pinv=v.c;const e=$('#pin');if(e)e.value=v.c;go()});
+  else go();
+}
+async function startSellerDisc(){
+  if(!Disc.available())return st('الظهور التلقائي غير متاح على هذا الجهاز — استخدم الطريقة اليدوية');
+  try{await Disc.startSeller(sellerId(),db.settings.sellerName||'بائع',{
+    onOwner:name=>{if(!Sync.isOpen())st('المالك ('+name+') فتح نقطة اتصال — اكتب الكود وانتظر اتصاله')},
+    onOffer:(from,ip,code)=>sellerAcceptOffer(ip,code)});st('ظاهر للمالك ✔ — بانتظار اتصاله')}
+  catch(e){st('تعذر تفعيل الظهور التلقائي: '+(e.message||e))}
+}
 function importSales(m){
   const have=new Set(db.invoices.map(i=>i.id));let n=0;
   (m.invoices||[]).forEach(i=>{if(!have.has(i.id)){db.invoices.push({...i,seller:m.name||i.seller||'بائع',sent:true});n++}});
@@ -202,7 +259,7 @@ function wireSync(){
     }else{
       if(m.t==='hello'){
         if(String(m.code)!==String(ctx.code)){Sync.send({t:'deny'});setTimeout(()=>Sync.close(),400);st('كود خاطئ — تم الرفض');return}
-        ctx.authed=true;Sync.send({t:'ok'});st('متصل بالعامل: '+(m.name||'')+' ✔');
+        ctx.authed=true;Sync.send({t:'ok'});st('متصل بالعامل: '+(m.name||'')+' ✔');updDisc();
       }else if(m.t==='sales'&&ctx.authed){
         const n=importSales(m);Sync.send({t:'ack',ids:(m.invoices||[]).map(i=>i.id)});
         st(`تم استلام ${n} فاتورة جديدة من ${m.name}`);const e=$('#sl');if(e)e.innerHTML=sellersHTML();
@@ -214,7 +271,7 @@ wireSync();
 
 /* ============ الأحداث ============ */
 document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!el)return;const f=A[el.dataset.a];if(f){if(el.dataset.a!=='ovClose'||e.target===el)f(el.dataset,el)}});
-document.addEventListener('input',e=>{const k=e.target.dataset&&e.target.dataset.c;if(k){db.settings.theme[k]=e.target.value;applyTheme()}});
+document.addEventListener('input',e=>{if(e.target.id==='pin')ctx.pinv=e.target.value.trim();if(e.target.id==='code')ctx.code=e.target.value.trim();const k=e.target.dataset&&e.target.dataset.c;if(k){db.settings.theme[k]=e.target.type==='range'?+e.target.value:e.target.value;applyTheme()}});
 document.addEventListener('change',e=>{
   if(e.target.dataset&&e.target.dataset.c)save();
   if(e.target.id==='rf'){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!d.settings||!d.invoices)throw 0;if(confirm('سيتم استبدال كل البيانات الحالية. متابعة؟')){db=Object.assign(Store.defaults(),d);save();view='home';render();toast('تم الاسترجاع')}}catch(x){toast('ملف غير صالح')}};r.readAsText(f)}
@@ -222,7 +279,8 @@ document.addEventListener('change',e=>{
 const R=()=>{save();render()};
 Object.assign(A,{
   ovClose:closeM,
-  go:d=>{view=d.v;if(view!=='table')ctx.tableId=null;ctx.edit=false;render();window.scrollTo(0,0)},
+  go:d=>{view=d.v;if(view!=='table')ctx.tableId=null;ctx.edit=false;render();window.scrollTo(0,0);
+    if(view==='sync'&&isSeller())startSellerDisc();else if(view!=='sync'&&Disc.active&&!Sync.isOpen())Disc.stop()},
   cat:d=>{ctx.cat=d.id;render()},
   toggleEdit:()=>{ctx.edit=!ctx.edit;render()},
   addCat:()=>form('قسم جديد',[{k:'name',l:'اسم القسم'}],v=>{if(!v.name)return false;const c={id:uid(),name:v.name};db.categories.push(c);ctx.cat=c.id;R()}),
@@ -260,6 +318,10 @@ Object.assign(A,{
   delInv:d=>{if(confirm('حذف الفاتورة؟')){db.invoices=db.invoices.filter(i=>i.id!==d.id);closeM();R()}},
   saveName:()=>{const v=$('#cname').value.trim();if(v){db.settings.name=v;R();toast('تم الحفظ')}},
   resetTheme:()=>{db.settings.theme={...Store.THEME};R()},
+  preset:d=>{db.settings.theme={...Store.THEME,...PRESETS[d.i].t};R()},
+  mirrorNow:async()=>{try{const p=await Store.mirrorNow(db);toast('تم الحفظ في: '+p);render()}catch(e){toast('تعذر الحفظ: '+e.message)}},
+  restoreFolder:async()=>{const j=await Store.readSnap();if(!j)return toast('لا توجد نسخة في مجلد الهاتف');
+    if(confirm('سيتم استبدال البيانات الحالية بنسخة المجلد. متابعة؟')){db=Store.merge(j);view='home';R();toast('تم الاسترجاع')}},
   setPin:()=>form('رمز المالك الجديد',[{k:'p',l:'الرمز'}],v=>{if(v.p.length<3){toast('الرمز قصير');return false}db.settings.pin=v.p;R();toast('تم التغيير')}),
   backup:()=>saveFile('cafe-backup-'+Store.day()+'.json',JSON.stringify(db)),
   restore:()=>$('#rf').click(),
@@ -275,11 +337,30 @@ Object.assign(A,{
   push:()=>{if(!ctx.authed)return toast('لا يوجد عامل متصل');Sync.send(configMsg());toast('تم إرسال المنتجات')},
   pull:()=>{if(!ctx.authed)return toast('لا يوجد عامل متصل');Sync.send({t:'pull'});st('جاري سحب المبيعات...')},
   sendSales:()=>{if(!Sync.isOpen())return toast('غير متصل');Sync.send(salesMsg());st('تم إرسال المبيعات')},
-  closeConn:()=>{Sync.close();ctx.authed=false;st('تم إغلاق نقطة الاتصال')},
+  closeConn:()=>{Sync.close();ctx.authed=false;ctx.peerId=null;st('تم إغلاق نقطة الاتصال');if(!isSeller())Disc.stop().then(updDisc)},
+  discToggle:async()=>{
+    if(Disc.active){await Disc.stop();discPeers=[];updDisc();return st('تم إغلاق نقطة الاتصال')}
+    ctx.code=$('#code').value.trim();if(!ctx.code)return toast('اكتب كود الاتصال');
+    if(!Disc.available())return toast('الظهور التلقائي يحتاج تطبيق الأندرويد — استخدم الطريقة اليدوية');
+    wireSync();
+    try{await Disc.startOwner(db.settings.name,{
+      onPeers:l=>{discPeers=l;const e=$('#wk');if(e)e.innerHTML=wkHTML()},
+      onAnswer:async(from,code)=>{if(from!==ctx.pending)return;ctx.pending=null;try{await Sync.acceptAnswer(code);st('جاري الربط...')}catch(x){st('الرد غير صالح')}}});
+      updDisc();st('نقطة الاتصال مفتوحة — بانتظار ظهور الموظفين')}
+    catch(e){st('تعذر فتح نقطة الاتصال: '+(e.message||e))}
+  },
+  discConnect:async d=>{
+    const p=discPeers.find(x=>x.id===d.id);if(!p)return toast('الموظف لم يعد ظاهراً');
+    const c=$('#code');ctx.code=(c&&c.value.trim())||ctx.code;if(!ctx.code)return toast('اكتب كود الاتصال');
+    try{wireSync();ctx.pending=p.id;ctx.peerId=p.id;st('جاري الاتصال بـ '+p.name+'...');
+      const code=await Sync.host();await Disc.sendCode(p.ip,'offer',db.settings.name,p.id,code);st('بانتظار رد '+p.name+'...')}
+    catch(e){st('تعذر الاتصال: '+(e.message||e))}
+  },
   mkTxt:()=>{$('#tx').value=Sync.enc(isSeller()?salesMsg():configMsg())},
   impTxt:()=>{try{const m=Sync.dec($('#tx').value);
     if(m.t==='config'&&isSeller()){applyConfig(m);toast('تم تحديث المنتجات')}
     else if(m.t==='sales'&&!isSeller()){const n=importSales(m);toast('تم استلام '+n+' فاتورة');const e=$('#sl');if(e)e.innerHTML=sellersHTML()}
     else toast('النص لا يناسب هذا الجهاز')}catch(x){toast('نص غير صالح')}}
 });
-render();
+window.addEventListener('dberror',e=>toast('خطأ في الحفظ: '+(e.detail&&e.detail.message)));
+Store.init().then(d=>{db=d;render()}).catch(e=>{document.body.innerHTML='<p style="padding:20px">تعذر فتح قاعدة البيانات: '+esc(e.message||e)+'</p>'});
